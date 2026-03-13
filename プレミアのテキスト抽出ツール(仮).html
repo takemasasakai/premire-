@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>字幕抽出 — Premiere Pro</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600&display=swap');
+
+  :root {
+    --bg:        #1e1e1e;
+    --bg2:       #252525;
+    --bg3:       #2d2d2d;
+    --bg4:       #323232;
+    --border:    #3a3a3a;
+    --border2:   #444;
+    --text:      #d4d4d4;
+    --text-dim:  #888;
+    --text-faint:#555;
+    --accent:    #4f9cf9;
+    --accent2:   #7b61ff;
+    --success:   #3ea87c;
+    --warn:      #e05a3a;
+    --mono:      'Courier New', monospace;
+    --sans:      'Source Sans 3', 'Segoe UI', sans-serif;
+  }
+
+  * { box-sizing:border-box; margin:0; padding:0; }
+
+  body {
+    min-height:100vh;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    font-size:13px;
+    font-weight:400;
+    display:flex;
+    flex-direction:column;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ── Header ── */
+  header {
+    background:var(--bg2);
+    border-bottom:1px solid var(--border);
+    padding:0 20px;
+    height:40px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-shrink:0;
+    user-select:none;
+  }
+  .header-left {
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .pr-logo {
+    width:22px; height:22px;
+    background:linear-gradient(135deg,#9999ff 0%,#7b61ff 100%);
+    border-radius:4px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:600; color:#fff; letter-spacing:-.5px;
+    flex-shrink:0;
+  }
+  .header-title {
+    font-size:12px;
+    font-weight:400;
+    color:var(--text-dim);
+    letter-spacing:.2px;
+  }
+  .header-title span {
+    color:var(--text);
+    font-weight:600;
+  }
+  .header-right {
+    font-size:11px;
+    color:var(--text-faint);
+    letter-spacing:.5px;
+  }
+
+  /* ── Panel tabs (decorative) ── */
+  .panel-tabs {
+    background:var(--bg2);
+    border-bottom:1px solid var(--border);
+    padding:0 20px;
+    display:flex;
+    gap:0;
+    flex-shrink:0;
+  }
+  .panel-tab {
+    font-size:11px;
+    color:var(--text-dim);
+    padding:7px 14px;
+    border-bottom:2px solid transparent;
+    cursor:default;
+    letter-spacing:.3px;
+    margin-right:2px;
+  }
+  .panel-tab.active {
+    color:var(--text);
+    border-bottom-color:var(--accent);
+  }
+
+  /* ── Main ── */
+  main {
+    flex:1;
+    padding:24px 24px 20px;
+    max-width:860px;
+    margin:0 auto;
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+  }
+
+  /* ── Drop zone ── */
+  #dropzone {
+    border:1px dashed var(--border2);
+    border-radius:3px;
+    padding:52px 40px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+    background:var(--bg2);
+  }
+  #dropzone:hover, #dropzone.dragging {
+    border-color:var(--accent);
+    background:rgba(79,156,249,.05);
+  }
+  .drop-icon {
+    width:40px; height:40px;
+    margin:0 auto 14px;
+    opacity:.4;
+  }
+  .drop-icon svg { width:100%; height:100%; }
+  .drop-main {
+    font-size:14px;
+    font-weight:600;
+    color:var(--text);
+    margin-bottom:5px;
+  }
+  .drop-sub {
+    font-size:12px;
+    color:var(--text-dim);
+  }
+  .drop-sub a {
+    color:var(--accent);
+    text-decoration:none;
+    cursor:pointer;
+  }
+  .drop-sub a:hover { text-decoration:underline; }
+
+  /* ── Info panel ── */
+  .info-panel {
+    background:var(--bg2);
+    border:1px solid var(--border);
+    border-radius:3px;
+    padding:14px 16px;
+    font-size:12px;
+    color:var(--text-dim);
+    line-height:1.8;
+    display:flex;
+    gap:10px;
+    align-items:flex-start;
+  }
+  .info-icon { color:var(--accent); font-size:14px; flex-shrink:0; margin-top:1px; }
+  .info-panel strong { color:var(--text); font-weight:600; }
+
+  /* ── Error ── */
+  .error-box {
+    border-left:3px solid var(--warn);
+    padding:9px 14px;
+    color:#f09070;
+    font-size:12px;
+    background:rgba(224,90,58,.08);
+    border-radius:0 3px 3px 0;
+  }
+
+  /* ── Progress ── */
+  #progress-view {
+    display:none;
+    background:var(--bg2);
+    border:1px solid var(--border);
+    border-radius:3px;
+    padding:48px 40px;
+    text-align:center;
+  }
+  .progress-label {
+    font-size:11px;
+    letter-spacing:1.5px;
+    color:var(--text-dim);
+    margin-bottom:20px;
+    text-transform:uppercase;
+    font-weight:600;
+  }
+  .progress-bar-bg {
+    height:3px;
+    background:var(--border2);
+    max-width:320px;
+    margin:0 auto;
+    border-radius:2px;
+    overflow:hidden;
+  }
+  .progress-bar-fill {
+    height:100%;
+    background:linear-gradient(90deg,var(--accent2),var(--accent));
+    width:0%;
+    transition:width .3s ease;
+    border-radius:2px;
+  }
+  .progress-pct {
+    margin-top:10px;
+    font-size:11px;
+    color:var(--text-faint);
+    font-family:var(--mono);
+  }
+
+  /* ── Result ── */
+  #result-view { display:none; }
+
+  .result-top {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    background:var(--bg2);
+    border:1px solid var(--border);
+    border-radius:3px;
+    padding:12px 16px;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+  .result-meta { display:flex; align-items:center; gap:12px; }
+  .result-badge {
+    background:rgba(62,168,124,.15);
+    border:1px solid rgba(62,168,124,.3);
+    color:var(--success);
+    font-size:10px;
+    font-weight:600;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    padding:3px 8px;
+    border-radius:2px;
+  }
+  .result-count { font-size:13px; font-weight:600; color:var(--text); }
+  .result-file  { font-size:11px; color:var(--text-faint); margin-left:4px; }
+
+  .btns { display:flex; gap:8px; flex-shrink:0; }
+  .btn {
+    padding:6px 14px;
+    border:1px solid var(--border2);
+    border-radius:3px;
+    background:var(--bg3);
+    cursor:pointer;
+    font-size:12px;
+    font-family:var(--sans);
+    color:var(--text-dim);
+    transition:all .12s;
+    letter-spacing:.2px;
+  }
+  .btn:hover { border-color:var(--text-dim); color:var(--text); background:var(--bg4); }
+
+  .btn-primary {
+    padding:6px 16px;
+    border:1px solid var(--accent);
+    border-radius:3px;
+    background:var(--accent);
+    color:#fff;
+    cursor:pointer;
+    font-size:12px;
+    font-family:var(--sans);
+    font-weight:600;
+    letter-spacing:.3px;
+    transition:all .12s;
+  }
+  .btn-primary:hover { background:#3a87e8; border-color:#3a87e8; }
+
+  /* ── Caption list ── */
+  #caption-list {
+    border:1px solid var(--border);
+    border-radius:3px;
+    max-height:480px;
+    overflow-y:auto;
+    background:var(--bg2);
+  }
+  #caption-list::-webkit-scrollbar { width:6px; }
+  #caption-list::-webkit-scrollbar-track { background:var(--bg2); }
+  #caption-list::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+  #caption-list::-webkit-scrollbar-thumb:hover { background:#555; }
+
+  .caption-row {
+    display:grid;
+    grid-template-columns:196px 1fr;
+    border-bottom:1px solid var(--border);
+    transition:background .1s;
+  }
+  .caption-row:last-child { border-bottom:none; }
+  .caption-row:hover { background:rgba(255,255,255,.025); }
+
+  .caption-tc {
+    padding:9px 12px;
+    font-size:11px;
+    color:var(--text-faint);
+    font-family:var(--mono);
+    border-right:1px solid var(--border);
+    background:rgba(0,0,0,.15);
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:2px;
+    line-height:1.5;
+    flex-shrink:0;
+  }
+  .tc-in  { color:var(--accent);  font-size:10.5px; }
+  .tc-sep { color:var(--text-faint); font-size:9px; padding:1px 0; }
+  .tc-out { color:var(--text-dim); font-size:10.5px; }
+
+  .caption-text {
+    padding:9px 14px;
+    font-size:13px;
+    line-height:1.65;
+    word-break:break-all;
+    color:var(--text);
+  }
+
+  .empty {
+    text-align:center;
+    padding:48px 0;
+    color:var(--text-faint);
+    font-size:13px;
+    line-height:2.2;
+  }
+
+  /* ── Footer ── */
+  footer {
+    background:var(--bg2);
+    border-top:1px solid var(--border);
+    padding:7px 20px;
+    font-size:11px;
+    color:var(--text-faint);
+    display:flex;
+    justify-content:space-between;
+    flex-shrink:0;
+    letter-spacing:.3px;
+  }
+
+  @media(max-width:600px){
+    main { padding:16px; }
+    header, footer { padding-left:16px; padding-right:16px; }
+    .caption-row { grid-template-columns:1fr; }
+    .caption-tc { border-right:none; border-bottom:1px solid var(--border); flex-direction:row; gap:6px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="header-left">
+    <div class="pr-logo">Pr</div>
+    <div class="header-title"><span>字幕抽出</span> — .prproj から字幕をある程度抽出するツール</div>
+  </div>
+  <div class="header-right">.prproj → .txt</div>
+</header>
+<div class="panel-tabs">
+  <div class="panel-tab active">字幕抽出</div>
+  <div class="panel-tab">タイムコード付き出力</div>
+</div>
+<main>
+  <div id="idle-view">
+    <div id="dropzone">
+      <div class="drop-icon">
+        <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="8" width="32" height="24" rx="2" stroke="#888" stroke-width="1.5"/>
+          <path d="M14 20h12M20 14v12" stroke="#888" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <p class="drop-main">.prproj ファイルをここにドロップ</p>
+      <p class="drop-sub">または <a onclick="document.getElementById('fileInput').click()">クリックしてファイルを選択</a></p>
+      <input id="fileInput" type="file" accept=".prproj" style="display:none">
+    </div>
+    <div id="error-box" class="error-box" style="display:none"></div>
+    <div class="info-panel">
+      <span class="info-icon">ℹ</span>
+      <div>
+        <strong>使い方：</strong>Premiere Pro の「テキスト」パネル → グラフィックタブに表示されるキャプション・テロップを、タイムコード付きで .txt に書き出します。改行も正確に再現されます。すべてブラウザ内で処理されます（ファイルは外部に送信されません）。
+      </div>
+    </div>
+  </div>
+  <div id="progress-view">
+    <div class="progress-label" id="progress-label">解析中...</div>
+    <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
+    <div class="progress-pct" id="progress-pct">0%</div>
+  </div>
+  <div id="result-view">
+    <div class="result-top">
+      <div class="result-meta">
+        <div class="result-badge">完了</div>
+        <div>
+          <span class="result-count" id="result-count"></span>
+          <span class="result-file" id="result-file"></span>
+        </div>
+      </div>
+      <div class="btns">
+        <button class="btn" onclick="reset()">別のファイル</button>
+        <button class="btn-primary" onclick="download()">↓ .txt を保存</button>
+      </div>
+    </div>
+    <div id="caption-list"></div>
+  </div>
+</main>
+<footer>
+  <span>ローカル処理 — ファイルは外部に送信されません</span>
+  <span>Premiere Pro 2019 以降対応</span>
+</footer>
+<script>
+'use strict';
+let currentFileName = '';
+let currentCaptions = [];
+
+const dropzone  = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('dragging'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragging'));
+dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('dragging'); processFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => processFile(e.target.files[0]));
+
+async function processFile(file) {
+  if (!file || !file.name.endsWith('.prproj')) { showError('.prproj ファイルのみ対応しています'); return; }
+  currentFileName = file.name;
+  showPhase('progress'); setProgress(0, file.name);
+  try {
+    const buf = await file.arrayBuffer();
+    setProgress(15);
+    const raw = new Uint8Array(buf);
+    let xmlText;
+    if (raw[0] === 0x1f && raw[1] === 0x8b) {
+      const ds = new DecompressionStream('gzip');
+      const w = ds.writable.getWriter(), r = ds.readable.getReader();
+      w.write(raw); w.close();
+      const chunks = [];
+      while (true) { const {done, value} = await r.read(); if (done) break; chunks.push(value); }
+      const all = new Uint8Array(chunks.reduce((a,b) => a+b.length, 0));
+      let off = 0; chunks.forEach(c => { all.set(c, off); off += c.length; });
+      xmlText = new TextDecoder('utf-8').decode(all);
+    } else {
+      xmlText = new TextDecoder('utf-8').decode(raw);
+    }
+    setProgress(40);
+    currentCaptions = extractCaptions(xmlText);
+    setProgress(100);
+    showResults();
+  } catch(e) {
+    showPhase('idle');
+    showError('解析エラー: ' + e.message);
+    console.error(e);
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// メイン抽出ロジック
+// ────────────────────────────────────────────────────────────────────────────
+function extractCaptions(xml) {
+  const FPS = detectFPS(xml);
+
+  // ── 1. VideoFilterComponent (テキストレイヤー) の InstanceName を収集 ──
+  // <VideoFilterComponent> の中に <DisplayName>テキスト</DisplayName> があるものだけ対象
+  // InstanceName に実際のテキスト（&#13; = 改行）が入っている
+  const EFFECT_RE = /^(in|IN)|エフェクト|スライド|ブラー|ぼよん|スプリッド|イタリック|残像|^(拡大|縮小|→|←|大きくなる|小さくなる)$|^\d+F$|画像\d+→\d+|スケールIN|（[左右上下縦横]）|チャンネル登録をお願いします/;
+
+  const fcText  = {};   // filterCompOID → text
+  const FC_TAG  = '<VideoFilterComponent ObjectID="';
+  const DISP_TXT = '<DisplayName>テキスト</DisplayName>';
+  const INST_O   = '<InstanceName>';
+  const INST_C   = '</InstanceName>';
+  let pos = 0;
+  while (true) {
+    const idx = xml.indexOf(FC_TAG, pos);
+    if (idx < 0) break;
+    const idEnd = xml.indexOf('"', idx + FC_TAG.length);
+    const oid   = xml.slice(idx + FC_TAG.length, idEnd);
+    const end   = xml.indexOf('</VideoFilterComponent>', idx);
+    if (end < 0 || end > idx + 3000) { pos = idx + 1; continue; }
+    const block = xml.slice(idx, end);
+    if (block.indexOf(DISP_TXT) < 0) { pos = end + 20; continue; }
+    const ii = block.indexOf(INST_O);
+    const ie = ii >= 0 ? block.indexOf(INST_C, ii) : -1;
+    if (ii >= 0 && ie >= 0) {
+      const text = block.slice(ii + INST_O.length, ie)
+                        .replace(/&#13;/g, '\n')
+                        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+                        .trim();
+      if (!EFFECT_RE.test(text) && text.length >= 2) {
+        fcText[oid] = text;
+      }
+    }
+    pos = end + 20;
+  }
+
+  // ── 2. VideoComponentChain ObjectID → Component ref リスト ──
+  const chainComps = {};
+  const VC_TAG = '<VideoComponentChain ObjectID="';
+  const COMP_RE = /<Component Index="\d+" ObjectRef="(\d+)"/g;
+  pos = 0;
+  while (true) {
+    const idx = xml.indexOf(VC_TAG, pos);
+    if (idx < 0) break;
+    const idEnd = xml.indexOf('"', idx + VC_TAG.length);
+    const oid   = xml.slice(idx + VC_TAG.length, idEnd);
+    const end   = xml.indexOf('</VideoComponentChain>', idx);
+    if (end < 0 || end > idx + 2000) { pos = idx + 1; continue; }
+    const block = xml.slice(idx, end);
+    const refs  = [];
+    let m;
+    COMP_RE.lastIndex = 0;
+    while ((m = COMP_RE.exec(block)) !== null) refs.push(m[1]);
+    chainComps[oid] = refs;
+    pos = end + 20;
+  }
+
+  // ── 3. SubClip ObjectID → Name（ネストシーケンス検出用） ──
+  // Premiere の Name タグ: 表示上 <n>...</n> だが実際は <Name>...</Name>
+  const NAME_O = '<' + 'Name' + '>';
+  const NAME_C = '</' + 'Name' + '>';
+  const subclipNames = {};
+  const SC_TAG = '<SubClip ObjectID="';
+  pos = 0;
+  while (true) {
+    const idx = xml.indexOf(SC_TAG, pos);
+    if (idx < 0) break;
+    const idEnd = xml.indexOf('"', idx + SC_TAG.length);
+    const oid   = xml.slice(idx + SC_TAG.length, idEnd);
+    const end   = xml.indexOf('</SubClip>', idx);
+    if (end < 0 || end > idx + 600) { pos = idx + 1; continue; }
+    const block = xml.slice(idx, end);
+    const ni = block.indexOf(NAME_O);
+    const ne = ni >= 0 ? block.indexOf(NAME_C, ni) : -1;
+    if (ni >= 0 && ne >= 0) subclipNames[oid] = block.slice(ni + NAME_O.length, ne);
+    pos = end + 10;
+  }
+
+  // ── 4. VideoClipTrackItem を走査して Start/End + テキストを取得 ──
+  const VCTI_TAG  = '<VideoClipTrackItem ObjectID="';
+  const COMPOBJ   = '<Components ObjectRef="';
+  const SUBREF_S  = '<SubClip ObjectRef="';
+  const results   = [];
+  const seen      = new Set();
+  pos = 0;
+
+  while (true) {
+    const idx = xml.indexOf(VCTI_TAG, pos);
+    if (idx < 0) break;
+    const end = xml.indexOf('</VideoClipTrackItem>', idx);
+    if (end < 0 || end > idx + 5000) { pos = idx + 1; continue; }
+    const block = xml.slice(idx, end);
+
+    // ネストシーケンス除外
+    const sri = block.indexOf(SUBREF_S);
+    if (sri >= 0) {
+      const sre    = block.indexOf('"', sri + SUBREF_S.length);
+      const subref = block.slice(sri + SUBREF_S.length, sre);
+      const sname  = subclipNames[subref] || '';
+      if (sname.includes('シーケンス') || sname.includes('ネスト')) {
+        pos = end + 20; continue;
+      }
+    }
+
+    // Start / End
+    const si = block.indexOf('<Start>');
+    const ei = block.indexOf('<End>');
+    if (si < 0 || ei < 0) { pos = end + 20; continue; }
+    const startV = block.slice(si + 7, block.indexOf('</Start>', si));
+    const endV   = block.slice(ei + 5, block.indexOf('</End>',   ei));
+
+    // ComponentChain → テキスト
+    const ci = block.indexOf(COMPOBJ);
+    if (ci < 0) { pos = end + 20; continue; }
+    const ce        = block.indexOf('"', ci + COMPOBJ.length);
+    const chainOid  = block.slice(ci + COMPOBJ.length, ce);
+    const comps     = chainComps[chainOid] || [];
+    const text      = comps.reduce((found, c) => found || fcText[c], null);
+
+    if (text) {
+      const st = parseInt(startV, 10);
+      const et = parseInt(endV,   10);
+      if (!isNaN(st)) {
+        // 目次形式（番号付き箇条書き複数行）を除外
+        const isIndex = /^\d+[\.\uff0e]\s/.test(text) && text.includes('\n');
+        if (!isIndex) {
+          const key = `${st}|${text}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            results.push({ start: st, end: et, text });
+          }
+        }
+      }
+    }
+    pos = end + 20;
+  }
+
+  results.sort((a, b) => a.start - b.start);
+  return results.map(r => ({ startTC: tc(r.start, FPS), endTC: tc(r.end, FPS), text: r.text }));
+}
+
+function detectFPS(xml) {
+  const i = xml.indexOf('<TimeBase>');
+  if (i < 0) return 30;
+  const v = parseFloat(xml.slice(i + 10, xml.indexOf('</TimeBase>', i)));
+  return isNaN(v) ? 30 : Math.round(v);
+}
+
+function tc(ticks, fps) {
+  const TICKS = 254016000000;
+  const tf    = Math.round(ticks / TICKS * fps);
+  const f     = tf % fps;
+  const ts    = Math.floor(tf / fps);
+  return `${p(Math.floor(ts/3600))}:${p(Math.floor(ts/60)%60)}:${p(ts%60)}:${p(f)}`;
+}
+function p(n) { return String(n).padStart(2, '0'); }
+
+// ── UI ───────────────────────────────────────────────────────────────────────
+function showPhase(phase) {
+  document.getElementById('idle-view').style.display     = phase === 'idle'     ? '' : 'none';
+  document.getElementById('progress-view').style.display = phase === 'progress' ? 'block' : 'none';
+  document.getElementById('result-view').style.display   = phase === 'result'   ? 'block' : 'none';
+}
+function setProgress(pct, label) {
+  if (label) document.getElementById('progress-label').textContent = '解析中 — ' + label;
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-pct').textContent  = pct + '%';
+}
+function showError(msg) {
+  const b = document.getElementById('error-box');
+  b.textContent = '⚠ ' + msg; b.style.display = 'block';
+}
+function showResults() {
+  showPhase('result');
+  document.getElementById('result-count').textContent = currentCaptions.length + ' 件';
+  document.getElementById('result-file').textContent  = '— ' + currentFileName;
+  const list = document.getElementById('caption-list');
+  if (!currentCaptions.length) {
+    list.innerHTML = '<div class="empty">字幕が見つかりませんでした。<br>グラフィック・テロップが含まれているか確認してください。</div>';
+    return;
+  }
+  list.innerHTML = currentCaptions.map(c =>
+    `<div class="caption-row">
+      <div class="caption-tc">
+        <span class="tc-in">${c.startTC}</span>
+        <span class="tc-sep">▼</span>
+        <span class="tc-out">${c.endTC}</span>
+      </div>
+      <div class="caption-text">${esc(c.text)}</div>
+    </div>`
+  ).join('');
+}
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+function reset() {
+  currentCaptions = []; currentFileName = '';
+  document.getElementById('error-box').style.display = 'none';
+  fileInput.value = ''; showPhase('idle');
+}
+function download() {
+  const lines  = currentCaptions.map(c => `${c.startTC} - ${c.endTC}\n\n${c.text}\n`);
+  const header = `Premiere Pro キャプション抽出結果\nファイル: ${currentFileName}\n抽出数: ${currentCaptions.length} 件\n${'─'.repeat(40)}\n\n`;
+  const blob   = new Blob(['\uFEFF' + header + lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url    = URL.createObjectURL(blob);
+  Object.assign(document.createElement('a'), {
+    href: url,
+    download: currentFileName.replace('.prproj', '') + '_captions.txt'
+  }).click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
