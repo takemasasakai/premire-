@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>プレミアのテキスト抽出ツール(仮)</title>
+<title>字幕抽出 — Premiere Pro</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600&display=swap');
 
@@ -357,7 +357,7 @@
 <header>
   <div class="header-left">
     <div class="pr-logo">Pr</div>
-    <div class="header-title"><span>字幕抽出ツール(仮)</span> — .prproj から字幕をある程度抽出するツール</div>
+    <div class="header-title"><span>字幕抽出</span> — .prproj から字幕をある程度抽出するツール</div>
   </div>
   <div class="header-right">.prproj → .txt</div>
 </header>
@@ -460,16 +460,88 @@ async function processFile(file) {
 // ────────────────────────────────────────────────────────────────────────────
 // メイン抽出ロジック
 // ────────────────────────────────────────────────────────────────────────────
+
+// ── ArbVideoComponentParam (ParameterID=1) の base64 からソーステキストを取得 ──
+// InstanceName はPremiereが自動生成する「表示名」であり、テキストを後から編集すると
+// ズレが生じる（例: グリフォサート→グリホサート、つくれる→作れる）。
+// ArbVideoComponentParam の StartKeyframeValue に本物のテキストが入っている。
+function buildParamTextMap(xml) {
+  const map = {};
+  const PARAM_TAG = '<ArbVideoComponentParam ObjectID="';
+  const CLOSING   = '</ArbVideoComponentParam>';
+  let pos = 0;
+  while (true) {
+    const idx = xml.indexOf(PARAM_TAG, pos);
+    if (idx < 0) break;
+    const idEnd = xml.indexOf('"', idx + PARAM_TAG.length);
+    const oid   = xml.slice(idx + PARAM_TAG.length, idEnd);
+    const end   = xml.indexOf(CLOSING, idx);
+    if (end < 0 || end > idx + 3000) { pos = idx + 1; continue; }
+    const block = xml.slice(idx, end);
+    // ParameterID=1 のみ（ソーステキストパラメータ）
+    if (block.indexOf('<ParameterID>1</ParameterID>') < 0) { pos = end + 20; continue; }
+    // StartKeyframeValue (base64) を取得
+    const kfIdx = block.indexOf('<StartKeyframeValue');
+    if (kfIdx < 0) { pos = end + 20; continue; }
+    const kfInner = block.indexOf('>', kfIdx) + 1;
+    const kfEnd   = block.indexOf('</StartKeyframeValue>', kfInner);
+    if (kfInner <= 0 || kfEnd < 0) { pos = end + 20; continue; }
+    const b64 = block.slice(kfInner, kfEnd).trim();
+    if (b64.length < 50) { pos = end + 20; continue; }
+    const text = decodeSourceText(b64);
+    if (text && text.length >= 2) map[oid] = text;
+    pos = end + 20;
+  }
+  return map;
+}
+
+// base64バイナリからUTF-8テキストを抽出
+function decodeSourceText(b64) {
+  try {
+    const decoded = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    // UTF-8日本語（または全角文字）の開始バイトを探す
+    for (let i = 0; i < decoded.length - 2; i++) {
+      const b = decoded[i];
+      if (b >= 0xe3 && b <= 0xef) {
+        try {
+          // ここから後ろをUTF-8としてデコード
+          const slice  = decoded.slice(i);
+          const raw    = new TextDecoder('utf-8', { fatal: false }).decode(slice);
+          const result = [];
+          for (const ch of raw) {
+            const cp = ch.codePointAt(0);
+            if (cp === 0 || ch === '\ufffd') break;
+            if (cp >= 0x20) result.push(ch);
+            else if (cp === 0x0a || cp === 0x0d) result.push('\n');
+            else break;
+          }
+          // 日本語が含まれる行のみ残す（末尾のフォント名等ASCII行を除去）
+          const lines = result.join('').split('\n');
+          const clean = [];
+          for (const ln of lines) {
+            if (clean.length === 0 || /[^\x00-\x7f]/.test(ln)) clean.push(ln);
+            else break;
+          }
+          const text = clean.join('\n').trim();
+          if (text.length >= 1) return text;
+        } catch (_) { /* continue */ }
+      }
+    }
+  } catch (_) { /* ignore */ }
+  return null;
+}
+
 function extractCaptions(xml) {
   const FPS = detectFPS(xml);
 
-  // ── 1. VideoFilterComponent (テキストレイヤー) の InstanceName を収集 ──
-  // <VideoFilterComponent> の中に <DisplayName>テキスト</DisplayName> があるものだけ対象
-  // InstanceName に実際のテキスト（&#13; = 改行）が入っている
+  // ── 0. ArbVideoComponentParam からソーステキストを収集（優先） ──
+  const paramTextMap = buildParamTextMap(xml);
+
+  // ── 1. VideoFilterComponent を走査: Param Index=0 → SourceText、fallback で InstanceName ──
   const EFFECT_RE = /^(in|IN)|エフェクト|スライド|ブラー|ぼよん|スプリッド|イタリック|残像|^(拡大|縮小|→|←|大きくなる|小さくなる)$|^\d+F$|画像\d+→\d+|スケールIN|（[左右上下縦横]）|チャンネル登録をお願いします/;
 
-  const fcText  = {};   // filterCompOID → text
-  const FC_TAG  = '<VideoFilterComponent ObjectID="';
+  const fcText   = {};   // filterCompOID → text（SourceText優先、fallback=InstanceName）
+  const FC_TAG   = '<VideoFilterComponent ObjectID="';
   const DISP_TXT = '<DisplayName>テキスト</DisplayName>';
   const INST_O   = '<InstanceName>';
   const INST_C   = '</InstanceName>';
@@ -483,16 +555,25 @@ function extractCaptions(xml) {
     if (end < 0 || end > idx + 3000) { pos = idx + 1; continue; }
     const block = xml.slice(idx, end);
     if (block.indexOf(DISP_TXT) < 0) { pos = end + 20; continue; }
-    const ii = block.indexOf(INST_O);
-    const ie = ii >= 0 ? block.indexOf(INST_C, ii) : -1;
-    if (ii >= 0 && ie >= 0) {
-      const text = block.slice(ii + INST_O.length, ie)
-                        .replace(/&#13;/g, '\n')
-                        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-                        .trim();
-      if (!EFFECT_RE.test(text) && text.length >= 2) {
-        fcText[oid] = text;
+
+    // Param Index=0 のref → SourceText（本物のテキスト）
+    const p0m = block.match(/<Param Index="0" ObjectRef="(\d+)"/);
+    let text = p0m ? (paramTextMap[p0m[1]] || null) : null;
+
+    // fallback: InstanceName（自動生成表示名。稀にズレあり）
+    if (!text) {
+      const ii = block.indexOf(INST_O);
+      const ie = ii >= 0 ? block.indexOf(INST_C, ii) : -1;
+      if (ii >= 0 && ie >= 0) {
+        text = block.slice(ii + INST_O.length, ie)
+                    .replace(/&#13;/g, '\n')
+                    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+                    .trim();
       }
+    }
+
+    if (text && !EFFECT_RE.test(text) && text.length >= 2) {
+      fcText[oid] = text;
     }
     pos = end + 20;
   }
